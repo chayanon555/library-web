@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ระบบยืม-คืนหนังสือ ห้องสมุด (ตัวอย่าง)</title>
+  <style>
+    /* เบสิกสไตล์ — ปรับแต่งได้ตามต้องการ */
+    :root{
+      font-family: "Noto Sans Thai", Arial, sans-serif;
+      --card-bg: #ffffff;
+      --accent: #2563eb;
+      --muted: #6b7280;
+      --success: #059669;
+      --danger: #dc2626;
+    }
+    *{box-sizing: border-box}
+    body{
+      margin:0;
+      background:#f3f4f6;
+      color:#111827;
+      padding:24px;
+    }
+    header{
+      display:flex;
+      gap:16px;
+      align-items:center;
+      margin-bottom:18px;
+    }
+    header h1{margin:0;font-size:1.2rem}
+    .container{
+      max-width:1100px;
+      margin:0 auto;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 360px;
+      gap:18px;
+      align-items:start;
+    }
+    .card{
+      background:var(--card-bg);
+      border-radius:8px;
+      padding:16px;
+      box-shadow:0 1px 4px rgba(0,0,0,0.06);
+    }
+    .controls{
+      display:flex;
+      gap:8px;
+      margin-bottom:12px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    input[type="search"], input[type="text"], input[type="date"], select {
+      padding:8px 10px;
+      border:1px solid #e5e7eb;
+      border-radius:6px;
+      width:100%;
+    }
+    button{
+      background:var(--accent);
+      color:white;
+      border:none;
+      padding:8px 12px;
+      border-radius:6px;
+      cursor:pointer;
+    }
+    button.ghost{background:transparent;color:var(--accent);border:1px solid #e5e7eb}
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:0.95rem;
+    }
+    th, td{
+      padding:8px 6px;
+      text-align:left;
+      border-bottom:1px solid #f3f4f6;
+    }
+    .muted{color:var(--muted);font-size:0.9rem}
+    .status-borrowed{color:var(--danger);font-weight:600}
+    .status-available{color:var(--success);font-weight:600}
+    .small{font-size:0.85rem}
+    .right{text-align:right}
+    .borrow-list{max-height:360px; overflow:auto;}
+    .book-row{display:flex; gap:12px; align-items:center}
+    .book-thumb{
+      width:48px;height:64px;background:#eef2ff;border-radius:4px;
+      display:flex;align-items:center;justify-content:center;color:var(--accent);
+      font-weight:700;
+    }
+    .meta{display:flex;flex-direction:column}
+    .danger{color:var(--danger)}
+    @media (max-width:900px){
+      .grid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>ระบบยืม-คืนหนังสือ ห้องสมุด (ตัวอย่าง)</h1>
+      <div class="muted small">ใช้งานบนเครื่อง (localStorage) — ไม่ใช่ระบบจริง</div>
+    </header>
+
+    <div class="grid">
+      <!-- ซ้าย: รายการหนังสือ, ค้นหา, ตาราง -->
+      <section class="card" aria-labelledby="catalogTitle">
+        <h2 id="catalogTitle">คลังหนังสือ</h2>
+
+        <div class="controls">
+          <input type="search" id="searchInput" placeholder="ค้นหาชื่อหนังสือ / ผู้แต่ง..." />
+          <select id="filterStatus" title="กรองสถานะ">
+            <option value="all">ทั้งหมด</option>
+            <option value="available">พร้อมยืม</option>
+            <option value="borrowed">ถูกยืม</option>
+          </select>
+          <button id="resetDataBtn" class="ghost">ตั้งค่าเริ่มต้น</button>
+        </div>
+
+        <div id="booksList" aria-live="polite"></div>
+      </section>
+
+      <!-- ขวา: ฟอร์มยืม/คืน และรายการยืม -->
+      <aside>
+        <div class="card">
+          <h3>ยืมหนังสือ</h3>
+          <form id="borrowForm">
+            <label class="small">เลือกหนังสือ</label>
+            <select id="bookSelect" required></select>
+            <div style="margin-top:8px">
+              <label class="small">ชื่อผู้ยืม</label>
+              <input type="text" id="borrowerName" placeholder="เช่น สมชาย ใจดี" required />
+            </div>
+            <div style="margin-top:8px">
+              <label class="small">วันที่คืนโดยประมาณ</label>
+              <input type="date" id="dueDate" required />
+            </div>
+            <div style="margin-top:10px; display:flex; gap:8px">
+              <button type="submit">ยืนยันยืม</button>
+              <button type="button" class="ghost" id="clearForm">ล้าง</button>
+            </div>
+            <div id="borrowMsg" class="muted small" style="margin-top:8px"></div>
+          </form>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3>รายการที่ยืมอยู่</h3>
+          <div class="borrow-list" id="borrowedContainer"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3>คู่มือสั้น</h3>
+          <ul class="small muted">
+            <li>เมนู "ตั้งค่าเริ่มต้น" คืนรายการตัวอย่าง</li>
+            <li>ข้อมูลจะถูกเก็บในเบราว์เซอร์ (localStorage)</li>
+            <li>ทดลองยืม/คืนเพื่อดูสถานะเปลี่ยนแปลง</li>
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    /*************** ข้อมูลตัวอย่างเริ่มต้น ***************/
+    const defaultBooks = [
+      { id: 'B001', title: 'โครงสร้างข้อมูลและอัลกอริทึม', author: 'สมชาย ส.' , year: 2019, available: true },
+      { id: 'B002', title: 'พื้นฐานการเขียนโปรแกรม', author: 'สายฝน ท.', year: 2020, available: true },
+      { id: 'B003', title: 'ระบบฐานข้อมูล', author: 'สมหมาย จ.', year: 2018, available: true },
+      { id: 'B004', title: 'การวิเคราะห์ข้อมูลด้วย Python', author: 'อรทัย ก.', year: 2022, available: true },
+      { id: 'B005', title: 'การจัดการห้องสมุดสมัยใหม่', author: 'ดวงใจ น.', year: 2017, available: true }
+    ];
+
+    /*************** ตัวช่วยเก็บและอ่านจาก localStorage ***************/
+    const STORAGE_KEY = 'lib_demo_v1';
+    function loadState(){
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return { books: defaultBooks.slice(), borrows: [] };
+      try { return JSON.parse(raw); } catch(e){ return { books: defaultBooks.slice(), borrows: [] }; }
+    }
+    function saveState(state){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    /*************** เริ่มต้นและเชื่อม UI ***************/
+    let state = loadState();
+
+    const booksListEl = document.getElementById('booksList');
+    const bookSelect = document.getElementById('bookSelect');
+    const borrowedContainer = document.getElementById('borrowedContainer');
+    const searchInput = document.getElementById('searchInput');
+    const filterStatus = document.getElementById('filterStatus');
+    const borrowForm = document.getElementById('borrowForm');
+    const borrowerName = document.getElementById('borrowerName');
+    const dueDate = document.getElementById('dueDate');
+    const borrowMsg = document.getElementById('borrowMsg');
+    const resetDataBtn = document.getElementById('resetDataBtn');
+    const clearFormBtn = document.getElementById('clearForm');
+
+    // ฟังก์ชันจัดรูปแบบวันที่
+    function fmtDate(d){
+      if(!d) return '-';
+      const dt = new Date(d);
+      if(isNaN(dt)) return d;
+      return dt.toLocaleDateString('th-TH');
+    }
+
+    // แสดงรายชื่อหนังสือตามกรอง
+    function renderBooks(){
+      const q = searchInput.value.trim().toLowerCase();
+      const status = filterStatus.value;
+      const rows = state.books.filter(b=>{
+        const matchQ = (b.title + ' ' + b.author + ' ' + b.id).toLowerCase().includes(q);
+        if(!matchQ) return false;
+        if(status === 'available') return b.available;
+        if(status === 'borrowed') return !b.available;
+        return true;
+      });
+
+      if(rows.length === 0){
+        booksListEl.innerHTML = '<div class="muted small">ไม่พบหนังสือตามเงื่อนไข</div>';
+        return;
+      }
+
+      const html = rows.map(b=>{
+        const statusLabel = b.available ? `<span class="status-available">พร้อมยืม</span>` : `<span class="status-borrowed">ถูกยืม</span>`;
+        return `
+          <div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">
+            <div class="book-thumb">${b.id.slice(-2)}</div>
+            <div style="flex:1">
+              <div style="font-weight:600">${b.title}</div>
+              <div class="muted small">${b.author} • ${b.year}</div>
+            </div>
+            <div style="min-width:110px;text-align:right">
+              ${statusLabel}
+            </div>
+          </div>
+        `;
+      }).join('');
+      booksListEl.innerHTML = html;
+    }
+
+    // เติม select สำหรับยืม (เฉพาะหนังสือ available)
+    function renderBookSelect(){
+      const avail = state.books.filter(b=>b.available);
+      if(avail.length === 0){
+        bookSelect.innerHTML = '<option value="">ไม่มีหนังสือให้ยืม</option>';
+        bookSelect.disabled = true;
+      } else {
+        bookSelect.disabled = false;
+        bookSelect.innerHTML = '<option value="">-- เลือกหนังสือ --</option>' +
+          avail.map(b=>`<option value="${b.id}">${b.title} — ${b.author} (${b.id})</option>`).join('');
+      }
+    }
+
+    // แสดงรายการยืมปัจจุบัน
+    function renderBorrowed(){
+      if(state.borrows.length === 0){
+        borrowedContainer.innerHTML = '<div class="muted small">ยังไม่มีรายการยืม</div>';
+        return;
+      }
+      const html = state.borrows.map(item=>{
+        const overdue = item.dueDate ? (new Date(item.dueDate) < new Date()) : false;
+        return `
+          <div style="padding:8px 0;border-bottom:1px solid #f3f4f6;display:flex;gap:10px;align-items:center">
+            <div style="flex:1">
+              <div style="font-weight:600">${item.book.title}</div>
+              <div class="muted small">${item.book.author} • ${item.book.id}</div>
+              <div class="small muted">ยืมโดย: ${item.borrower} • ยืมเมื่อ: ${fmtDate(item.borrowedAt)} • คืนภายใน: ${fmtDate(item.dueDate)}</div>
+            </div>
+            <div style="text-align:right">
+              ${overdue ? `<div class="danger small">เกินกำหนด</div>` : `<div class="small muted">ปกติ</div>`}
+              <div style="margin-top:8px">
+                <button class="ghost" data-action="return" data-id="${item.book.id}">คืน</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      borrowedContainer.innerHTML = html;
+
+      // ผูกปุ่มคืน
+      borrowedContainer.querySelectorAll('button[data-action="return"]').forEach(btn=>{
+        btn.addEventListener('click', ()=> {
+          const bookId = btn.getAttribute('data-id');
+          if(confirm('ต้องการคืนหนังสือนี้หรือไม่?')) {
+            returnBook(bookId);
+          }
+        });
+      });
+    }
+
+    // ฟังก์ชันยืมหนังสือ
+    function borrowBook(bookId, borrower, due) {
+      const book = state.books.find(b=>b.id === bookId);
+      if(!book){ alert('ไม่พบหนังสือ'); return; }
+      if(!book.available){ alert('หนังสือถูกยืมไปแล้ว'); return; }
+      book.available = false;
+      const entry = {
+        book: {...book}, // snapshot
+        borrower: borrower,
+        borrowedAt: new Date().toISOString(),
+        dueDate: due ? new Date(due).toISOString() : null
+      };
+      state.borrows.push(entry);
+      saveState(state);
+      renderAll();
+      borrowMsg.textContent = `ยืมสำเร็จ: "${book.title}" โดย ${borrower}`;
+      setTimeout(()=> borrowMsg.textContent = '', 4000);
+    }
+
+    // ฟังก์ชันคืนหนังสือ
+    function returnBook(bookId){
+      // ลบจาก borrows และตั้ง available = true
+      const idx = state.borrows.findIndex(x=>x.book.id === bookId);
+      if(idx === -1){ alert('ไม่พบรายการยืม'); return; }
+      const removed = state.borrows.splice(idx,1)[0];
+      const bookInState = state.books.find(b=>b.id === bookId);
+      if(bookInState) bookInState.available = true;
+      saveState(state);
+      renderAll();
+      alert(`คืนสำเร็จ: "${removed.book.title}"`);
+    }
+
+    // ล้างข้อมูลเป็นค่าเริ่มต้น
+    function resetToDefault(){
+      if(!confirm('จะตั้งค่าข้อมูลเป็นค่าเริ่มต้น (ข้อมูลยืมปัจจุบันจะหาย) ใช่หรือไม่?')) return;
+      state = { books: defaultBooks.slice(), borrows: [] };
+      saveState(state);
+      renderAll();
+    }
+
+    // render หลักทั้งหมด
+    function renderAll(){
+      renderBooks();
+      renderBookSelect();
+      renderBorrowed();
+    }
+
+    // event handlers
+    searchInput.addEventListener('input', renderBooks);
+    filterStatus.addEventListener('change', renderBooks);
+
+    borrowForm.addEventListener('submit', (ev)=>{
+      ev.preventDefault();
+      const bookId = bookSelect.value;
+      const name = borrowerName.value.trim();
+      const due = dueDate.value;
+      if(!bookId){ alert('เลือกหนังสือที่ต้องการยืม'); return; }
+      if(!name){ alert('กรอกชื่อผู้ยืม'); return; }
+      borrowBook(bookId, name, due);
+      borrowForm.reset();
+    });
+
+    resetDataBtn.addEventListener('click', resetToDefault);
+    clearFormBtn.addEventListener('click', ()=> borrowForm.reset());
+
+    // โหลดครั้งแรก
+    renderAll();
+
+    // ตัวอย่าง: หากต้องการเติมข้อมูลโปรแกรม (สำหรับทดสอบ)
+    // state.books.push({id:'B999', title:'หนังสือทดสอบ', author:'Tester', year:2025, available:true});
+    // saveState(state); renderAll();
+  </script>
+</body>
+</html>
